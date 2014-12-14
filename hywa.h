@@ -1,5 +1,4 @@
-typedef struct {
-} Skeleton;
+
 
 typedef struct {
 	uint32 group_count;
@@ -40,6 +39,9 @@ typedef struct {
 
 /* Skeleton */
 typedef struct {
+} Skeleton;
+
+typedef struct {
 	GroupMetaData metadata;
 	Skeleton skele;
 } G1MS;
@@ -60,6 +62,7 @@ typedef struct {
 	uint32 _e;
 	uint32 _f;
 	uint32 sub_chunk_count;
+	SubChunk *sub_chunk;
 } G1MG;
 
 typedef struct {
@@ -71,11 +74,6 @@ typedef struct {
 	ChunkMetaData metadata;
 	uint8 *data;
 } SubChunk;
-
-typedef struct {
-	uint32 vertex_array_count;
-	VertexArray *vertex_array;
-} VertexSubChunk;
 
 typedef struct {
 	float x, y, z;
@@ -91,3 +89,15 @@ typedef struct {
 } VertexArray;
 
 
+typedef struct {
+	uint32 vertex_array_count;
+	VertexArray *vertex_array;
+} VertexSubChunk;
+
+typedef struct {
+	VertexArray *vertex_array;
+} Geometry;
+
+typedef struct {
+	Geometry *geometery;
+} HyruleWarriorsModel;
