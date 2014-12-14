@@ -63,22 +63,31 @@ typedef struct {
 } G1MG;
 
 typedef struct {
-	uint32 identifier;
+	uint32 type;
 	uint32 size;
-} SubChunkMetaData;
+} ChunkMetaData;
 
 typedef struct {
 	ChunkMetaData metadata;
+	uint8 *data;
+} SubChunk;
+
+typedef struct {
 	uint32 vertex_array_count;
 	VertexArray *vertex_array;
 } VertexSubChunk;
+
+typedef struct {
+	float x, y, z;
+	uint8 *_unknown;
+} VertexEntry;
 
 typedef struct {
 	uint32 _a;
 	uint32 vertex_entry_size;
 	uint32 vertex_entries;
 	uint32 _b;
-	uint8 **entry;
+	VertexEntry **entry;
 } VertexArray;
 
 
