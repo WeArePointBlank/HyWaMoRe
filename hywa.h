@@ -12,7 +12,7 @@ typedef struct {
 } GroupMetaMetaData;
 
 typedef struct {
-	char name[8];
+	char *name;
 	uint32 size;
 } GroupMetaData;
 
@@ -54,7 +54,7 @@ typedef struct {
 /* Geometry */
 typedef struct {
 	GroupMetaData metadata;
-	char platform[8];
+	char *platform;
 	uint32 _a;
 	uint32 _b;
 	uint32 _c;
@@ -85,9 +85,8 @@ typedef struct {
 	uint32 vertex_entry_size;
 	uint32 vertex_entries;
 	uint32 _b;
-	VertexEntry **entry;
+	VertexEntry *entry;
 } VertexArray;
-
 
 typedef struct {
 	uint32 vertex_array_count;
@@ -95,9 +94,30 @@ typedef struct {
 } VertexSubChunk;
 
 typedef struct {
-	VertexArray *vertex_array;
-} Geometry;
+	uint a, b, c;
+} Triangle;
 
 typedef struct {
-	Geometry *geometery;
+	uint32 indices;
+	uint32 length_of_index_in_bits;
+	uint32 _a;
+	Triangle *triangle;
+} FaceGroup;
+
+typedef struct {
+	VertexArray *vertex_array;
+	uint32 vertex_index;
+	uint32 vertices;
+	FaceGroup *face_group;
+	uint32 triangle_index;
+	uint32 triangles;
+} Mesh;
+
+typedef struct {
+	uint amount;
+	Mesh *mesh;
+} Meshes;
+
+typedef struct {
+	Meshes meshes;
 } HyruleWarriorsModel;
