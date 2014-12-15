@@ -200,10 +200,10 @@ read_face_groups(SubChunk *face_sub_chunk) {
 		offset += face_group[i].index_length_in_bits / 8;
 		b = getVariableWidthUInt(data+offset, face_group[i].index_length_in_bits);
 		offset += face_group[i].index_length_in_bits / 8;
-		for(m = 0; m < face_group->indices; m++) {
+		for(m = 2; m < face_group->indices; m++) {
 			c = getVariableWidthUInt(data+offset, face_group[i].index_length_in_bits);
 			offset += face_group[i].index_length_in_bits / 8;
-			if(a != c && b != c && a != c) {
+			if(a != b && b != c && a != c) {
 				triangle[i].a = a;
 				triangle[i].b = b;
 				triangle[i].c = c;
@@ -275,17 +275,21 @@ read_model(char *file_path) {
 
 void
 hy_wa_model_to_obj(HyruleWarriorsModel *hwm) {
-	int i, v, t;
+	int i, v, t, p;
+
 	for(i = 0; i < hwm->meshes.amount; i++) {
 		for(v = 0; v < hwm->meshes.mesh[i]->vertices; v++) {
 			VertexEntry *vertex = hwm->meshes.mesh[i].vertex_array->entry[hwm->meshes.mesh[i].vertex_index+v];
-			printf(stdout, "v %f %f %f\n", vertex->x, vertex->y, vertex->z);
+			fprintf(stdout, "v %f %f %f\n", vertex->x, vertex->y, vertex->z);
 		}
+	}
 
+	for(i = 0; i < hwm->meshes.amount; i++) {
 		for(t = 0; t < hwm->meshes.mesh[i]->triangles; t++) {
 			Triangle *triangle = hwm->meshes.mesh[i].face_group->triangle[hwm->meshes.mesh[i].triangle_index+t];
-			printf(stdout, "f %i %i %i\n", triangle->a, triangle->b, triangle->c);
+			fprintf(stdout, "f %i %i %i\n", triangle->a+p, triangle->b+p, triangle->c+p);
 		}
+		p += hwm->meshes.mesh[i]->triangles;
 	}
 	return;
 }
