@@ -4,18 +4,31 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
+#include <endian.h>
+
+typedef uint32_t uint32;
+typedef uint16_t uint16;
+typedef uint8_t uint8;
 
 #include "hywa.h"
-#define IsValidSize(x, s, t) (!(x > s / sizeof(t)))
 
 uint32
 getUInt32(uint8 *data) {
-	return *((uint32 *)data);
+	return be32toh(*((uint32 *)data));
+}
+
+uint16
+getUInt16(uint8 *data) {
+	return be16toh(*((uint16 *)data));
 }
 
 float
 getFloat(uint8 *data) {
-	return *((float *)data);
+	float f;
+	uint32 td = be32toh(*((uint32 *)data));
+	memcpy(&f, &td, sizeof(float));
+	return f;
 }
 
 char *
@@ -34,9 +47,9 @@ getVariableWidthUInt(uint8 *data, uint length_in_bits) {
 		case 0x8:
 			return *data;
 		case 0x10:
-			return *((uint16 *)data);
+			return be16toh(*((uint16 *)data));
 		case 0x20:
-			return *((uint32 *)data);
+			return be32toh(*((uint32 *)data));
 		default:
 			return 0;
 	}
@@ -48,7 +61,7 @@ read_file_header(FILE *fh) {
 	uint8 buffer[4];
 	FileHeader *file_header = malloc(sizeof(FileHeader));
 	fread(buffer, 1, 4, fh);
-	file_header->group_count = *((uint32 *)buffer);
+	file_header->group_count = getUInt32(buffer);	
 	return file_header;
 }
 
@@ -61,7 +74,7 @@ read_groups_meta_meta_data(FILE *fh, uint32 group_count) {
 	for(i = 0; i < group_count; i++) {
 		fread(buffer, 1, 4, fh);
 		group_meta_meta_data[i].start = getUInt32(buffer);
-		fread(bufer, 1, 4, fh);
+		fread(buffer, 1, 4, fh);
 		group_meta_meta_data[i].size = getUInt32(buffer);
 	}
 
@@ -69,19 +82,17 @@ read_groups_meta_meta_data(FILE *fh, uint32 group_count) {
 }
 
 Group *
-read_groups(FILE *fh, uint32 group_count) {
+read_groups(FILE *fh, GroupMetaMetaData *group_meta_meta_data, uint32 group_count) {
 	uint8 buffer[8];
 	Group *group = malloc(sizeof(Group)*group_count);
 
 	int i;
 	for(i = 0; i < group_count; i++) {
 		fseek(fh, group_meta_meta_data[i].start, SEEK_SET);
-		GroupMetaData *metadata = malloc(sizeof(GroupMetaData));
-		group[i].metadata = metadata;
 		fread(buffer, 1, 8, fh);
-		group[i].metadata->name = getChar(buffer, 8);
+		group[i].metadata.name = getChar(buffer, 8);
 		fread(buffer, 1, 4, fh);
-		group[i].metadata->size = getUInt32(buffer);
+		group[i].metadata.size = getUInt32(buffer);
 		fread(buffer, 1, 4, fh);
 		group[i].size = getUInt32(buffer);
 		fread(buffer, 1, 4, fh);
@@ -100,17 +111,17 @@ read_sub_groups(FILE *fh, Group *group, uint32 group_count) {
 	int i, j;
 	for(i = 0; i < group_count; i++) {
 		fseek(fh, group[i].sub_group_start, SEEK_SET);
-		group[i].sub_group = malloc(sizeof(SubGroup *)*group[i].sub_group_count);
-
+		group[i].sub_group_count -= 1;
+		group[i].sub_group = malloc(sizeof(SubGroup)*group[i].sub_group_count);
 		for(j = 0; j < group[i].sub_group_count; j++) {
-			SubGroup *sub_group = malloc(sizeof(SubGroup));
 			fread(buffer, 1, 8, fh);
-			sub_group->metadata.name = getChar(buffer, 8);
+			group[i].sub_group[j].metadata.name = getChar(buffer, 8);
 			fread(buffer, 1, 4, fh);
-			sub_group->metadata.size = getUInt32(buffer);
-			sub_group->data = malloc(sizeof(uint8)*sub_group->metadata.size - sizeof(GroupMetaData));
-			fread(sub_group->data, 1, sub_group->metadata.size, fh);
-			group[i].sub_group[i] = sub_group;
+			group[i].sub_group[j].metadata.size = getUInt32(buffer);
+			group[i].sub_group[j].data = malloc(sizeof(uint8)*(group[i].sub_group[j].metadata.size - 0xC));
+			if(group[i].sub_group[j].data != NULL) {
+				fread(group[i].sub_group[j].data, 1, group[i].sub_group[j].metadata.size - 0xC, fh);
+			}
 		}
 	}
 }
@@ -120,12 +131,10 @@ G1MG *
 read_G1MG(Group *group) {
 	uint32 offset = 0;
 	G1MG *g1mg = malloc(sizeof(G1MG));
-	uint8 *data = group[0].sub_group[3]->data;
+	uint8 *data = group[0].sub_group[3].data;
 
-	g1mg->metadata.name = getChar(data+offset, 8);
-	offset += 8;
-	g1mg->metadata.size = getUInt32(data+offset);
-	offset += 4;
+	g1mg->metadata.name = group[0].sub_group[3].metadata.name;
+	g1mg->metadata.size = group[0].sub_group[3].metadata.size;
 	g1mg->platform = getChar(data+offset, 8);
 	offset += 0x8 + 0x18; //Skip 0x18 bytes since we don't know what they are.
 	g1mg->sub_chunk_count = getUInt32(data+offset);
@@ -139,6 +148,7 @@ read_G1MG(Group *group) {
 		offset += 0x4;
 		sub_chunk[i].metadata.size = getUInt32(data+offset);
 		offset += 0x4;
+		sub_chunk[i].data = data+offset;
 		offset += sub_chunk[i].metadata.size - 0x8;
 	}
 
@@ -151,30 +161,30 @@ read_vertex_arrays(SubChunk *vertex_sub_chunk) {
 	uint8 *data = vertex_sub_chunk->data;
 	uint32 vertex_arrays = getUInt32(data+offset);
 	offset += 0x4;
-	uint32 _a = 0;
-	offset += 0x4;
-	uint32 vertex_element_size = getUInt32(data+offset);
-	offset += 0x4;
-	uint32 vertices = getUInt32(data);
-	offset += 0x4;
-	uint32 _b = 0;
-	offset += 0x4;
 
 	int i, m;
 	VertexArray *vertex_array = malloc(sizeof(VertexArray)*vertex_arrays);
 	for(i = 0; i < vertex_arrays; i++) {
-		vertex_array->entry = malloc(sizeof(VertexEntry *)*vertex_entries);
-		for(m = 0; m < vertex_entries; m++) {
-			vertex_array->entry[m] = malloc(sizeof(VertexEntry));
-			vertex_array->entry[m]->x = getFloat(data+offset);
+			vertex_array[i]._a = 0;
 			offset += 0x4;
-			vertex_array->entry[m]->y = getFloat(data+offset);
+			vertex_array[i].vertex_entry_size = getUInt32(data+offset);
 			offset += 0x4;
-			vertex_array->entry[m]->z = getFloat(data+offset);
+			vertex_array[i].vertex_entries = getUInt32(data+offset);
 			offset += 0x4;
-			offset += vertex_array->vertex_entry->size - 0xC;
-		}
+			vertex_array[i]._b = 0;
+			offset += 0x4;
+			vertex_array[i].entry = malloc(sizeof(VertexEntry)*vertex_array[i].vertex_entries);
+			for(m = 0; m < vertex_array[i].vertex_entries; m++) {
+				vertex_array[i].entry[m].x = getFloat(data+offset);
+				offset += 0x4;
+				vertex_array[i].entry[m].y = getFloat(data+offset);
+				offset += 0x4;
+				vertex_array[i].entry[m].z = getFloat(data+offset);
+				offset += 0x4;
+				offset += vertex_array[i].vertex_entry_size - 0xC;
+			}
 	}
+	return vertex_array;
 }
 
 FaceGroup *
@@ -185,7 +195,6 @@ read_face_groups(SubChunk *face_sub_chunk) {
 	offset += 4;
 
 	int i, m;
-	uint a, b, c;
 	FaceGroup *face_group = malloc(sizeof(FaceGroup)*face_groups);
 	for(i = 0; i < face_groups; i++) {
 		face_group[i].indices = getUInt32(data+offset);
@@ -195,27 +204,17 @@ read_face_groups(SubChunk *face_sub_chunk) {
 		face_group[i]._a = 0;
 		offset += 4;
 
-		Triangle *triangle = malloc(sizeof(Triangle)*face_group->indices);
-		a = getVariableWidthUInt(data+offset, face_group[i].index_length_in_bits);
-		offset += face_group[i].index_length_in_bits / 8;
-		b = getVariableWidthUInt(data+offset, face_group[i].index_length_in_bits);
-		offset += face_group[i].index_length_in_bits / 8;
-		for(m = 2; m < face_group->indices; m++) {
-			c = getVariableWidthUInt(data+offset, face_group[i].index_length_in_bits);
-			offset += face_group[i].index_length_in_bits / 8;
-			if(a != b && b != c && a != c) {
-				triangle[i].a = a;
-				triangle[i].b = b;
-				triangle[i].c = c;
-			}
-			a = b;
-			b = c;
+		uint16 *index = malloc(sizeof(uint16)*face_group->indices);
+		for(m = 0; m < face_group->indices; m++) {
+			index[m] = getUInt16(data+offset);
+			offset += 2;
 		}
-		face_group[i].triangle = triangle;
+		face_group[i].index = index;
 	}
-
 	return face_group;
 }
+
+
 
 Meshes *
 read_meshes(SubChunk *mesh_sub_chunk, VertexArray *vertex_arrays, FaceGroup *face_groups) {
@@ -226,70 +225,135 @@ read_meshes(SubChunk *mesh_sub_chunk, VertexArray *vertex_arrays, FaceGroup *fac
 
 	int i;
 	uint32 geometry_index = 0;
-	uint32 vertex_index = 0;
-	uint32 triangle_index = 0;
 
 	Mesh *mesh = malloc(sizeof(Mesh)*total_meshes);
 	for(i = 0; i < total_meshes; i++) {
 		offset += 0x4 + 0x18;
 		geometry_index = getUInt32(data+offset);
 		offset += 0x4;
-		mesh[i].vertex_array = vertex_arrays[geometry_index];
-		mesh[i].face_group = face_groups[geometry_index];
+		mesh[i].vertex_array = &vertex_arrays[geometry_index];
+		mesh[i].face_group = &face_groups[geometry_index];
 		offset += 0x8;
 		mesh[i].vertex_index = getUInt32(data+offset);
 		offset += 0x4;
 		mesh[i].vertices = getUInt32(data+offset);
 		offset += 0x4;
-		mesh[i].triangle_index = getUInt32(data+offset);
+		mesh[i].indices_index = getUInt32(data+offset);
 		offset += 0x4;
-		mesh[i].triangles = getUInt32(data+offset);
+		mesh[i].indices = getUInt32(data+offset);
 		offset += 0x4;
+
+#ifdef DEBUG
+		printf("MESH\n");
+		printf("geometry index: %d\n", geometry_index);
+		printf("vertices: %d\n", mesh[i].vertices);
+		printf("vertex index start: %d\n", mesh[i].vertex_index);
+		printf("indices: %d\n", mesh[i].indices);
+		printf("indices index start: %d\n", mesh[i].indices_index);
+		printf("\n");
+#endif
+
 	}
 	Meshes *meshes = malloc(sizeof(Meshes));
 	meshes->mesh = mesh;
-	meshes->meshes = total_meshes;
-	return mesh;
+	meshes->amount = total_meshes;
+	return meshes;
 }
 
 HyruleWarriorsModel *
 read_model(char *file_path) {
-	FILE *file_handle = fopen(file_path, "rb");
+	FILE *fh = fopen(file_path, "rb");
 
 	FileHeader *file_header = read_file_header(fh);
 	GroupMetaMetaData *groups_meta_meta_data = read_groups_meta_meta_data(fh, file_header->group_count);
-	Group *groups = read_groups(fh, file_header->group_count);
+	Group *groups = read_groups(fh, groups_meta_meta_data, file_header->group_count);
 	read_sub_groups(fh, groups, file_header->group_count);
 
 	fclose(fh);
 
 	G1MG *g1mg = read_G1MG(groups);
-	VertexArray *vertex_arrays = read_vertex_arrays(g1mg->sub_chunk[3]);
-	FaceGroup *face_groups = read_face_groups(g1mg->sub_chunk[6]);
-	Meshes *meshes = read_meshes(g1mg->sub_chunk[7]);
+	VertexArray *vertex_arrays = read_vertex_arrays(&g1mg->sub_chunk[3]);
+	FaceGroup *face_groups = read_face_groups(&g1mg->sub_chunk[6]);
+	Meshes *meshes = read_meshes(&g1mg->sub_chunk[7], vertex_arrays, face_groups);
 
 	HyruleWarriorsModel *hyrule_warriors_model = malloc(sizeof(HyruleWarriorsModel));
 	hyrule_warriors_model->meshes = meshes;
 	return hyrule_warriors_model;
 }
 
+
+TriangleGroup *
+triangulate_indices(FaceGroup *face_group, uint start_index, uint amount) {
+		uint a, b, c, t, m;
+		uint face_direction, start_direction = -1;
+
+		TriangleGroup *triangle_group = malloc(sizeof(TriangleGroup)*amount);
+		a = face_group->index[start_index];
+		b = face_group->index[start_index+1];
+		face_direction = start_direction;
+		t = 0;
+		for(m = start_index+2; m < start_index+amount; m++) {
+			c = face_group->index[m];
+			if(c == 0xFFFF) {
+				m++;
+				a = face_group->index[m];
+				m++;
+				b = face_group->index[m];
+				face_direction = start_direction;
+			} else {
+				face_direction *= -1;
+				if(a != b && b != c && a != c) {
+					triangle_group->triangle = realloc(triangle_group->triangle, sizeof(Triangle)*(t+1));
+					if(face_direction > 0) {
+						triangle_group->triangle[t].a = a;
+						triangle_group->triangle[t].b = b;
+						triangle_group->triangle[t].c = c;
+					} else {
+						triangle_group->triangle[t].a = a;
+						triangle_group->triangle[t].b = c;
+						triangle_group->triangle[t].c = b;
+					}
+					t++;
+				}
+
+				a = b;
+				b = c;
+			}
+		}
+		triangle_group->triangles = t;
+		return triangle_group;
+}
+
 void
 hy_wa_model_to_obj(HyruleWarriorsModel *hwm) {
-	int i, v, t, p;
+	int tg, t, m, v; 
+	Triangle *tri = NULL;
+	FaceGroup *face_grp = NULL;
+	VertexEntry *vert = NULL;
+	Meshes *meshes = hwm->meshes;
+	uint total_triangles = 0;
+	uint vertex_offset = 0;
+	FaceGroup *lst_fc_grp = NULL;
 
-	for(i = 0; i < hwm->meshes.amount; i++) {
-		for(v = 0; v < hwm->meshes.mesh[i]->vertices; v++) {
-			VertexEntry *vertex = hwm->meshes.mesh[i].vertex_array->entry[hwm->meshes.mesh[i].vertex_index+v];
-			fprintf(stdout, "v %f %f %f\n", vertex->x, vertex->y, vertex->z);
+	for(m = 0; m < meshes->amount; m++) {
+		for(v = meshes->mesh[m].vertex_index; v < meshes->mesh[m].vertex_index+meshes->mesh[m].vertices; v++) {
+			vert = &meshes->mesh[m].vertex_array->entry[v];
+			printf("v %f %f %f\n", vert->x, vert->y, vert->z);
 		}
 	}
 
-	for(i = 0; i < hwm->meshes.amount; i++) {
-		for(t = 0; t < hwm->meshes.mesh[i]->triangles; t++) {
-			Triangle *triangle = hwm->meshes.mesh[i].face_group->triangle[hwm->meshes.mesh[i].triangle_index+t];
-			fprintf(stdout, "f %i %i %i\n", triangle->a+p, triangle->b+p, triangle->c+p);
-		}
-		p += hwm->meshes.mesh[i]->triangles;
+	TriangleGroup *tri_grp = NULL;
+	lst_fc_grp = meshes->mesh[0].face_group;
+	for(m = 0; m < meshes->amount; m++) {	
+			face_grp = meshes->mesh[m].face_group;
+			if(face_grp != lst_fc_grp) {
+				vertex_offset += meshes->mesh[m].vertex_array->vertex_entries;
+				lst_fc_grp = face_grp;
+			}
+			tri_grp = triangulate_indices(face_grp, meshes->mesh[m].indices_index, meshes->mesh[m].indices);
+			for(t = 0; t < tri_grp->triangles; t++) {
+				printf("f %d %d %d\n", tri_grp->triangle[t].a+1+vertex_offset, tri_grp->triangle[t].b+1+vertex_offset, tri_grp->triangle[t].c+1+vertex_offset);
+			}
 	}
 	return;
 }
@@ -301,8 +365,3 @@ main(int argc, char *argv[]) {
 	hy_wa_model_to_obj(hyrule_warriors_model);
 	return 0;
 }
-
-
-
-
-

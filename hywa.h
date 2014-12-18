@@ -1,9 +1,21 @@
-
+typedef struct {
+	char *name;
+	uint32 size;
+} GroupMetaData;
 
 typedef struct {
-	uint32 group_count;
-	GroupMetaData *group_meta_data;
-} FileHeader;
+	GroupMetaData metadata;
+	uint8 *data;
+} SubGroup;
+
+typedef struct {
+	GroupMetaData metadata;
+	uint32 size;
+	uint32 _a;
+	uint32 sub_group_count;
+	uint32 sub_group_start;
+	SubGroup *sub_group;
+} Group;
 
 typedef struct {
 	uint32 start;
@@ -12,24 +24,20 @@ typedef struct {
 } GroupMetaMetaData;
 
 typedef struct {
-	char *name;
-	uint32 size;
-} GroupMetaData;
+	uint32 group_count;
+	GroupMetaMetaData *group_meta_meta_data;
+} FileHeader;
 
-/* Entry */
-typedef struct {
-	GroupMetaData metadata;
-	uint32 size;
-	uint32 _a;
-	uint32 sub_group_count;
-	uint32 sub_group_start;
-	SubGroup **sub_group;
-} Group;
 
 typedef struct {
-	GroupMetaData metadata;
+	uint32 type;
+	uint32 size;
+} ChunkMetaData;
+
+typedef struct {
+	ChunkMetaData metadata;
 	uint8 *data;
-} SubGroup;
+} SubChunk;
 
 /*** Sub-groups ***/
 /* Unknown */
@@ -65,15 +73,7 @@ typedef struct {
 	SubChunk *sub_chunk;
 } G1MG;
 
-typedef struct {
-	uint32 type;
-	uint32 size;
-} ChunkMetaData;
 
-typedef struct {
-	ChunkMetaData metadata;
-	uint8 *data;
-} SubChunk;
 
 typedef struct {
 	float x, y, z;
@@ -98,10 +98,20 @@ typedef struct {
 } Triangle;
 
 typedef struct {
-	uint32 indices;
-	uint32 length_of_index_in_bits;
-	uint32 _a;
+	uint triangles;
 	Triangle *triangle;
+} TriangleGroup;
+
+typedef struct {
+	uint groups;
+	TriangleGroup *group;
+} TriangleGroups;
+
+typedef struct {
+	uint32 indices;
+	uint32 index_length_in_bits;
+	uint32 _a;
+	uint16 *index;
 } FaceGroup;
 
 typedef struct {
@@ -109,8 +119,8 @@ typedef struct {
 	uint32 vertex_index;
 	uint32 vertices;
 	FaceGroup *face_group;
-	uint32 triangle_index;
-	uint32 triangles;
+	uint32 indices_index;
+	uint32 indices;
 } Mesh;
 
 typedef struct {
@@ -119,5 +129,5 @@ typedef struct {
 } Meshes;
 
 typedef struct {
-	Meshes meshes;
+	Meshes *meshes;
 } HyruleWarriorsModel;
