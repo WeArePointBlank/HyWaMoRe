@@ -1,4 +1,17 @@
 /*
+	brought to you by .blank: success is in range.
+	
+	contributors:
+	Twili (format reversing)
+	lee (parsing tool)
+	chrrox (format reversing)
+	
+	thanks to:
+	crediar
+	DogPolice
+	
+	
+	/@\inere csfer aeov/@\
 */
 
 #include <stdio.h>
@@ -204,8 +217,8 @@ read_face_groups(SubChunk *face_sub_chunk) {
 		face_group[i]._a = 0;
 		offset += 4;
 
-		uint16 *index = malloc(sizeof(uint16)*face_group->indices);
-		for(m = 0; m < face_group->indices; m++) {
+		uint16 *index = malloc(sizeof(uint16)*face_group[i].indices);
+		for(m = 0; m < face_group[i].indices; m++) {
 			index[m] = getUInt16(data+offset);
 			offset += 2;
 		}
@@ -242,17 +255,6 @@ read_meshes(SubChunk *mesh_sub_chunk, VertexArray *vertex_arrays, FaceGroup *fac
 		offset += 0x4;
 		mesh[i].indices = getUInt32(data+offset);
 		offset += 0x4;
-
-#ifdef DEBUG
-		printf("MESH\n");
-		printf("geometry index: %d\n", geometry_index);
-		printf("vertices: %d\n", mesh[i].vertices);
-		printf("vertex index start: %d\n", mesh[i].vertex_index);
-		printf("indices: %d\n", mesh[i].indices);
-		printf("indices index start: %d\n", mesh[i].indices_index);
-		printf("\n");
-#endif
-
 	}
 	Meshes *meshes = malloc(sizeof(Meshes));
 	meshes->mesh = mesh;
@@ -287,7 +289,9 @@ triangulate_indices(FaceGroup *face_group, uint start_index, uint amount) {
 		uint a, b, c, t, m;
 		uint face_direction, start_direction = -1;
 
-		TriangleGroup *triangle_group = malloc(sizeof(TriangleGroup)*amount);
+		TriangleGroup *triangle_group = malloc(sizeof(TriangleGroup));
+		triangle_group->triangle = NULL;
+		
 		a = face_group->index[start_index];
 		b = face_group->index[start_index+1];
 		face_direction = start_direction;
@@ -315,7 +319,6 @@ triangulate_indices(FaceGroup *face_group, uint start_index, uint amount) {
 					}
 					t++;
 				}
-
 				a = b;
 				b = c;
 			}
@@ -326,34 +329,40 @@ triangulate_indices(FaceGroup *face_group, uint start_index, uint amount) {
 
 void
 hy_wa_model_to_obj(HyruleWarriorsModel *hwm) {
-	int tg, t, m, v; 
+	int t, m, v; 
+	FaceGroup *face_group = NULL;
+	VertexEntry *vertex_entry = NULL;
 	Triangle *tri = NULL;
-	FaceGroup *face_grp = NULL;
-	VertexEntry *vert = NULL;
 	Meshes *meshes = hwm->meshes;
-	uint total_triangles = 0;
-	uint vertex_offset = 0;
-	FaceGroup *lst_fc_grp = NULL;
+	uint vertex_offset = 1;
+	FaceGroup *last_face_group = NULL;
 
 	for(m = 0; m < meshes->amount; m++) {
 		for(v = meshes->mesh[m].vertex_index; v < meshes->mesh[m].vertex_index+meshes->mesh[m].vertices; v++) {
-			vert = &meshes->mesh[m].vertex_array->entry[v];
-			printf("v %f %f %f\n", vert->x, vert->y, vert->z);
+			vertex_entry = &meshes->mesh[m].vertex_array->entry[v];
+			printf("v %f %f %f\n", vertex_entry->x, vertex_entry->y, vertex_entry->z);
 		}
 	}
+	printf("\n");
 
-	TriangleGroup *tri_grp = NULL;
-	lst_fc_grp = meshes->mesh[0].face_group;
-	for(m = 0; m < meshes->amount; m++) {	
-			face_grp = meshes->mesh[m].face_group;
-			if(face_grp != lst_fc_grp) {
-				vertex_offset += meshes->mesh[m].vertex_array->vertex_entries;
-				lst_fc_grp = face_grp;
+	TriangleGroup *triangle_group = NULL;
+	last_face_group = meshes->mesh[0].face_group;
+	for(m = 0; m < meshes->amount; m++) {
+			
+			face_group = meshes->mesh[m].face_group;
+			if(face_group != last_face_group) {
+				vertex_offset += meshes->mesh[m-1].vertex_array->vertex_entries;
 			}
-			tri_grp = triangulate_indices(face_grp, meshes->mesh[m].indices_index, meshes->mesh[m].indices);
-			for(t = 0; t < tri_grp->triangles; t++) {
-				printf("f %d %d %d\n", tri_grp->triangle[t].a+1+vertex_offset, tri_grp->triangle[t].b+1+vertex_offset, tri_grp->triangle[t].c+1+vertex_offset);
+			
+			printf("g mesh%d\n\n", m);
+			triangle_group = triangulate_indices(face_group, meshes->mesh[m].indices_index, meshes->mesh[m].indices);
+			for(t = 0; t < triangle_group->triangles; t++) {
+				tri = &triangle_group->triangle[t];
+				printf("f %d %d %d\n", tri->a+vertex_offset, tri->b+vertex_offset, tri->c+vertex_offset);
 			}
+			printf("\n");
+			
+			last_face_group = face_group;
 	}
 	return;
 }
